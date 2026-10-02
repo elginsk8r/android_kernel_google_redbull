@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_SENSOR_DEV_H_
@@ -85,6 +85,8 @@ struct intf_params {
  * @bob_pwm_switch: Boolean flag to switch into PWM mode for BoB regulator
  * @last_flush_req: Last request to flush
  * @pipeline_delay: Sensor pipeline delay
+ * @force_low_priority_for_init_setting: Using low priority queue to send
+ *     init setting
  * @ois_fw_ver: OIS firmware version
  * @vcm_fw_ver: VCM firmware version
  */
@@ -113,6 +115,8 @@ struct cam_sensor_ctrl_t {
 	bool bob_pwm_switch;
 	uint32_t last_flush_req;
 	uint16_t pipeline_delay;
+	int32_t open_cnt;
+	bool force_low_priority_for_init_setting;
 	uint8_t fw_update_flag;
 	uint16_t ois_fw_ver;
 	uint16_t vcm_fw_ver;

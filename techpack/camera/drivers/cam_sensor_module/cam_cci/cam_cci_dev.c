@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "cam_cci_dev.h"
@@ -39,7 +40,7 @@ static long cam_cci_subdev_ioctl(struct v4l2_subdev *sd,
 
 	switch (cmd) {
 	case VIDIOC_MSM_CCI_CFG:
-		rc = cam_cci_core_cfg(sd, arg);
+		rc = -EOPNOTSUPP;
 		break;
 	case VIDIOC_CAM_CONTROL:
 		break;
@@ -470,13 +471,16 @@ static int cam_cci_platform_probe(struct platform_device *pdev)
 	rc = cam_cpas_register_client(&cpas_parms);
 	if (rc) {
 		CAM_ERR(CAM_CCI, "CPAS registration failed");
-		goto cci_no_resource;
+		goto cci_unregister_subdev;
 	}
 	CAM_DBG(CAM_CCI, "CPAS registration successful handle=%d",
 		cpas_parms.client_handle);
 	new_cci_dev->cpas_handle = cpas_parms.client_handle;
 
 	return rc;
+
+cci_unregister_subdev:
+	cam_unregister_subdev(&(new_cci_dev->v4l2_dev_str));
 cci_no_resource:
 	mutex_destroy(&new_cci_dev->init_mutex);
 	kfree(new_cci_dev);

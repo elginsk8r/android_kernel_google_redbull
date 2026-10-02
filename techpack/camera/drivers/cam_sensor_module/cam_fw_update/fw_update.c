@@ -29,7 +29,7 @@ void RamWrite32A(UINT_16 RamAddr, UINT_32 RamData)
 	i2c_reg_array.delay = 0;
 	i2c_reg_settings.reg_setting = &i2c_reg_array;
 
-	rc = camera_io_dev_write(io_master_info, &i2c_reg_settings);
+	rc = camera_io_dev_write(io_master_info, &i2c_reg_settings, false);
 	if (rc < 0)
 		CAM_ERR(CAM_SENSOR, "[OISFW] %s : write i2c failed, sid:0x%x\n",
 			__func__, io_master_info->cci_client->sid);
@@ -82,7 +82,7 @@ int CntWrt(UINT_8 *PcSetDat, UINT_16 UsDatNum)
 	}
 
 	rc = camera_io_dev_write_continuous(
-		io_master_info, &i2c_reg_setting, 1);
+		io_master_info, &i2c_reg_setting, 1, false);
 	if (rc < 0)
 		CAM_ERR(CAM_SENSOR, "[OISFW]:%s i2c write sequence error:%d\n",
 			__func__, rc);

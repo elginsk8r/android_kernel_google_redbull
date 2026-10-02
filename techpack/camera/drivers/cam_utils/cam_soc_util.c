@@ -2184,9 +2184,7 @@ static int cam_soc_util_dump_dmi_reg_range_user_buf(
 
 end:
 	if (dump_args)
-	{
 		cam_mem_put_cpu_buf(dump_args->buf_handle);
-	}
 	return rc;
 }
 
@@ -2268,9 +2266,7 @@ static int cam_soc_util_dump_cont_reg_range_user_buf(
 		sizeof(struct cam_hw_soc_dump_header);
 end:
 	if (dump_args)
-	{
 		cam_mem_put_cpu_buf(dump_args->buf_handle);
-	}
 	return rc;
 }
 

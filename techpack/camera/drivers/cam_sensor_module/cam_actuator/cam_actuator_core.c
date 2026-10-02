@@ -154,7 +154,7 @@ static int32_t cam_actuator_i2c_modes_util(
 
 	if (i2c_list->op_code == CAM_SENSOR_I2C_WRITE_RANDOM) {
 		rc = camera_io_dev_write(io_master_info,
-			&(i2c_list->i2c_settings));
+			&(i2c_list->i2c_settings), false);
 		if (rc < 0) {
 			CAM_ERR(CAM_ACTUATOR,
 				"Failed to random write I2C settings: %d",
@@ -165,7 +165,7 @@ static int32_t cam_actuator_i2c_modes_util(
 		rc = camera_io_dev_write_continuous(
 			io_master_info,
 			&(i2c_list->i2c_settings),
-			0);
+			0, false);
 		if (rc < 0) {
 			CAM_ERR(CAM_ACTUATOR,
 				"Failed to seq write I2C settings: %d",
@@ -176,7 +176,7 @@ static int32_t cam_actuator_i2c_modes_util(
 		rc = camera_io_dev_write_continuous(
 			io_master_info,
 			&(i2c_list->i2c_settings),
-			1);
+			1, false);
 		if (rc < 0) {
 			CAM_ERR(CAM_ACTUATOR,
 				"Failed to burst write I2C settings: %d",
@@ -504,6 +504,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 			cmd_buf = (uint32_t *)generic_ptr;
 			if (!cmd_buf) {
 				CAM_ERR(CAM_ACTUATOR, "invalid cmd buf");
+				cam_mem_put_cpu_buf(cmd_desc[i].mem_handle);
 				rc = -EINVAL;
 				goto end;
 			}
@@ -512,6 +513,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 				sizeof(struct common_header)))) {
 				CAM_ERR(CAM_ACTUATOR,
 					"Invalid length for sensor cmd");
+				cam_mem_put_cpu_buf(cmd_desc[i].mem_handle);
 				rc = -EINVAL;
 				goto end;
 			}
@@ -528,6 +530,8 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 				if (rc < 0) {
 					CAM_ERR(CAM_ACTUATOR,
 					"Failed to parse slave info: %d", rc);
+					cam_mem_put_cpu_buf(
+						cmd_desc[i].mem_handle);
 					goto end;
 				}
 				break;
@@ -543,6 +547,8 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 					CAM_ERR(CAM_ACTUATOR,
 					"Failed:parse power settings: %d",
 					rc);
+					cam_mem_put_cpu_buf(
+						cmd_desc[i].mem_handle);
 					goto end;
 				}
 				break;
@@ -563,6 +569,8 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 					CAM_ERR(CAM_ACTUATOR,
 					"Failed:parse init settings: %d",
 					rc);
+					cam_mem_put_cpu_buf(
+						cmd_desc[i].mem_handle);
 					goto end;
 				}
 				break;
@@ -645,7 +653,6 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		*actuator_trigger_timestamp = vcm_trigger_time;
 
 		cam_actuator_update_req_mgr(a_ctrl, csl_packet);
-		cam_mem_put_cpu_buf(cmd_desc[0].mem_handle);
 		break;
 	case CAM_ACTUATOR_PACKET_MANUAL_MOVE_LENS:
 		if (a_ctrl->cam_act_state < CAM_ACTUATOR_CONFIG) {
@@ -853,6 +860,11 @@ int32_t cam_actuator_driver_cmd(struct cam_actuator_ctrl_t *a_ctrl,
 
 		actuator_acq_dev.device_handle =
 			cam_create_device_hdl(&bridge_params);
+		if (actuator_acq_dev.device_handle <= 0) {
+			rc = -EFAULT;
+			CAM_ERR(CAM_ACTUATOR, "Can not create device handle");
+			goto release_mutex;
+		}
 		a_ctrl->bridge_intf.device_hdl = actuator_acq_dev.device_handle;
 		a_ctrl->bridge_intf.session_hdl =
 			actuator_acq_dev.session_handle;

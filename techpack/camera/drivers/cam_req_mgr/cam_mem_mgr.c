@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2020, 2022 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -178,18 +179,22 @@ static int32_t cam_mem_get_slot(void)
 	int32_t idx;
 
 	mutex_lock(&tbl.m_lock);
-	idx = find_first_zero_bit(tbl.bitmap, tbl.bits);
-	if (idx >= CAM_MEM_BUFQ_MAX || idx <= 0) {
+	if (tbl.bitmap) {
+		idx = find_first_zero_bit(tbl.bitmap, tbl.bits);
+		if (idx >= CAM_MEM_BUFQ_MAX || idx <= 0) {
+			mutex_unlock(&tbl.m_lock);
+			return -ENOMEM;
+		}
+
+		set_bit(idx, tbl.bitmap);
+		tbl.bufq[idx].active = true;
+		mutex_init(&tbl.bufq[idx].q_lock);
 		mutex_unlock(&tbl.m_lock);
-		return -ENOMEM;
+		return idx;
 	}
 
-	set_bit(idx, tbl.bitmap);
-	tbl.bufq[idx].active = true;
-	mutex_init(&tbl.bufq[idx].q_lock);
 	mutex_unlock(&tbl.m_lock);
-
-	return idx;
+	return -EINVAL;
 }
 
 static void cam_mem_put_slot(int32_t idx)
@@ -658,6 +663,7 @@ int cam_mem_mgr_alloc_and_map(struct cam_mem_mgr_alloc_cmd *cmd)
 		goto slot_fail;
 	}
 
+	mutex_lock(&tbl.m_lock);
 	if ((cmd->flags & CAM_MEM_FLAG_HW_READ_WRITE) ||
 		(cmd->flags & CAM_MEM_FLAG_HW_SHARED_ACCESS) ||
 		(cmd->flags & CAM_MEM_FLAG_PROTECTED_MODE)) {
@@ -687,10 +693,11 @@ int cam_mem_mgr_alloc_and_map(struct cam_mem_mgr_alloc_cmd *cmd)
 				"Failed in map_hw_va, len=%llu, flags=0x%x, fd=%d, region=%d, num_hdl=%d, rc=%d",
 				len, cmd->flags, fd, region,
 				cmd->num_hdl, rc);
+			mutex_unlock(&tbl.m_lock);
 			goto map_hw_fail;
 		}
 	}
-
+	mutex_unlock(&tbl.m_lock);
 	mutex_lock(&tbl.bufq[idx].q_lock);
 	tbl.bufq[idx].fd = fd;
 	tbl.bufq[idx].dma_buf = NULL;
@@ -777,6 +784,7 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd *cmd)
 		return -EINVAL;
 	}
 
+	mutex_lock(&tbl.m_lock);
 	if ((cmd->flags & CAM_MEM_FLAG_HW_READ_WRITE) ||
 		(cmd->flags & CAM_MEM_FLAG_PROTECTED_MODE)) {
 		rc = cam_mem_util_map_hw_va(cmd->flags,
@@ -791,9 +799,11 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd *cmd)
 				"Failed in map_hw_va, flags=0x%x, fd=%d, region=%d, num_hdl=%d, rc=%d",
 				cmd->flags, cmd->fd, CAM_SMMU_REGION_IO,
 				cmd->num_hdl, rc);
+			mutex_unlock(&tbl.m_lock);
 			goto map_fail;
 		}
 	}
+	mutex_unlock(&tbl.m_lock);
 
 	idx = cam_mem_get_slot();
 	if (idx < 0) {
@@ -1092,11 +1102,10 @@ void cam_mem_put_cpu_buf(int32_t buf_handle)
 	}
 
 	if (kref_put(&tbl.bufq[idx].krefcount, cam_mem_util_unmap))
-	{
 		CAM_DBG(CAM_MEM,
 			"Called unmap from here, buf_handle: %u, idx: %d",
 			buf_handle, idx);
-	}
+
 }
 EXPORT_SYMBOL(cam_mem_put_cpu_buf);
 

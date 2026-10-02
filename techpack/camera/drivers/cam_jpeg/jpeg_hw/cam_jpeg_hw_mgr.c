@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
@@ -315,6 +315,7 @@ static int cam_jpeg_insert_cdm_change_base(
 	*ch_base_iova_addr = 0;
 	ch_base_iova_addr += size;
 	*ch_base_iova_addr = 0;
+
 	cam_mem_put_cpu_buf(
 		config_args->hw_update_entries[CAM_JPEG_CHBASE].handle);
 
@@ -734,10 +735,12 @@ static int cam_jpeg_mgr_prepare_hw_update(void *hw_mgr_priv,
 		return rc;
 	}
 
-	if ((packet->num_cmd_buf > 5) || !packet->num_patches ||
-		!packet->num_io_configs ||
+	if (!packet->num_cmd_buf ||
+		(packet->num_cmd_buf > 5) ||
+		!packet->num_patches || !packet->num_io_configs ||
 		(packet->num_io_configs > CAM_JPEG_IMAGE_MAX)) {
-		CAM_ERR(CAM_JPEG, "wrong number of cmd/patch info: %u %u %u",
+		CAM_ERR(CAM_JPEG,
+			"wrong number of cmd/patch/io_configs info: %u %u %u",
 			packet->num_cmd_buf, packet->num_patches,
 			packet->num_io_configs);
 		return -EINVAL;
@@ -1293,6 +1296,16 @@ copy_error:
 	return rc;
 }
 
+static void cam_req_mgr_process_workq_jpeg_command_queue(struct work_struct *w)
+{
+	cam_req_mgr_process_workq(w);
+}
+
+static void cam_req_mgr_process_workq_jpeg_message_queue(struct work_struct *w)
+{
+	cam_req_mgr_process_workq(w);
+}
+
 static int cam_jpeg_setup_workqs(void)
 {
 	int rc, i;
@@ -1301,7 +1314,8 @@ static int cam_jpeg_setup_workqs(void)
 		"jpeg_command_queue",
 		CAM_JPEG_WORKQ_NUM_TASK,
 		&g_jpeg_hw_mgr.work_process_frame,
-		CRM_WORKQ_USAGE_NON_IRQ, 0);
+		CRM_WORKQ_USAGE_NON_IRQ, 0, false,
+		cam_req_mgr_process_workq_jpeg_command_queue);
 	if (rc) {
 		CAM_ERR(CAM_JPEG, "unable to create a worker %d", rc);
 		goto work_process_frame_failed;
@@ -1311,7 +1325,8 @@ static int cam_jpeg_setup_workqs(void)
 		"jpeg_message_queue",
 		CAM_JPEG_WORKQ_NUM_TASK,
 		&g_jpeg_hw_mgr.work_process_irq_cb,
-		CRM_WORKQ_USAGE_IRQ, 0);
+		CRM_WORKQ_USAGE_IRQ, 0, false,
+		cam_req_mgr_process_workq_jpeg_message_queue);
 	if (rc) {
 		CAM_ERR(CAM_JPEG, "unable to create a worker %d", rc);
 		goto work_process_irq_cb_failed;
@@ -1587,8 +1602,8 @@ hw_dump:
 		CAM_WARN(CAM_JPEG, "dump offset overshoot len %zu offset %zu",
 			jpeg_dump_args.buf_len, dump_args->offset);
 		mutex_unlock(&hw_mgr->hw_mgr_mutex);
-		rc = -ENOSPC;
-		goto end;
+		cam_mem_put_cpu_buf(dump_args->buf_handle);
+		return -ENOSPC;
 	}
 
 	remain_len = jpeg_dump_args.buf_len - dump_args->offset;
@@ -1598,8 +1613,8 @@ hw_dump:
 		CAM_WARN(CAM_JPEG, "dump buffer exhaust remain %zu min %u",
 			remain_len, min_len);
 		mutex_unlock(&hw_mgr->hw_mgr_mutex);
-		rc = -ENOSPC;
-		goto end;
+		cam_mem_put_cpu_buf(dump_args->buf_handle);
+		return -ENOSPC;
 	}
 
 	dst = (uint8_t *)jpeg_dump_args.cpu_addr + dump_args->offset;
@@ -1631,7 +1646,6 @@ hw_dump:
 	CAM_DBG(CAM_JPEG, "Offset before %u after %u",
 		dump_args->offset, jpeg_dump_args.offset);
 	dump_args->offset = jpeg_dump_args.offset;
-end:
 	cam_mem_put_cpu_buf(dump_args->buf_handle);
 	return rc;
 }

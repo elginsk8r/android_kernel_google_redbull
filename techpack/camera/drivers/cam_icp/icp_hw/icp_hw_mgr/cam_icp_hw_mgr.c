@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
  */
 
 #include <linux/uaccess.h>
@@ -110,6 +111,7 @@ static int cam_icp_send_ubwc_cfg(struct cam_icp_hw_mgr *hw_mgr)
 {
 	struct cam_hw_intf *a5_dev_intf = NULL;
 	int rc;
+	uint32_t disable_ubwc_comp = 0;
 
 	a5_dev_intf = hw_mgr->a5_dev_intf;
 	if (!a5_dev_intf) {
@@ -117,9 +119,12 @@ static int cam_icp_send_ubwc_cfg(struct cam_icp_hw_mgr *hw_mgr)
 		return -EINVAL;
 	}
 
+	disable_ubwc_comp = hw_mgr->disable_ubwc_comp;
+
 	rc = a5_dev_intf->hw_ops.process_cmd(
 		a5_dev_intf->hw_priv,
-		CAM_ICP_A5_CMD_UBWC_CFG, NULL, 0);
+		CAM_ICP_A5_CMD_UBWC_CFG, (void *)&disable_ubwc_comp,
+		sizeof(disable_ubwc_comp));
 	if (rc)
 		CAM_ERR(CAM_ICP, "CAM_ICP_A5_CMD_UBWC_CFG is failed");
 
@@ -1953,6 +1958,15 @@ static int cam_icp_hw_mgr_create_debugfs_entry(void)
 		icp_hw_mgr.dentry,
 		NULL, &cam_icp_debug_fw_dump)) {
 		CAM_ERR(CAM_ICP, "failed to create a5_fw_dump_lvl");
+		rc = -ENOMEM;
+		goto err;
+	}
+
+	if (!debugfs_create_bool("disable_ubwc_comp",
+		0644,
+		icp_hw_mgr.dentry,
+		&icp_hw_mgr.disable_ubwc_comp)) {
+		CAM_ERR(CAM_ICP, "failed to create disable_ubwc_comp");
 		rc = -ENOMEM;
 		goto err;
 	}
@@ -4211,13 +4225,15 @@ static int cam_icp_mgr_pkt_validation(struct cam_packet *packet)
 		return -EINVAL;
 	}
 
-	if (packet->num_io_configs > IPE_IO_IMAGES_MAX) {
+	if (!packet->num_io_configs ||
+		packet->num_io_configs > IPE_IO_IMAGES_MAX) {
 		CAM_ERR(CAM_ICP, "Invalid number of io configs: %d %d",
 			IPE_IO_IMAGES_MAX, packet->num_io_configs);
 		return -EINVAL;
 	}
 
-	if (packet->num_cmd_buf > CAM_ICP_CTX_MAX_CMD_BUFFERS) {
+	if (!packet->num_cmd_buf ||
+		packet->num_cmd_buf > CAM_ICP_CTX_MAX_CMD_BUFFERS) {
 		CAM_ERR(CAM_ICP, "Invalid number of cmd buffers: %d %d",
 			CAM_ICP_CTX_MAX_CMD_BUFFERS, packet->num_cmd_buf);
 		return -EINVAL;
@@ -4280,6 +4296,7 @@ static int cam_icp_mgr_process_cmd_desc(struct cam_icp_hw_mgr *hw_mgr,
 
 			*fw_cmd_buf_iova_addr =
 				(*fw_cmd_buf_iova_addr + cmd_desc[i].offset);
+
 			rc = cam_mem_get_cpu_buf(cmd_desc[i].mem_handle,
 				&cpu_addr, &len);
 			if (rc || !cpu_addr) {
@@ -4300,6 +4317,7 @@ static int cam_icp_mgr_process_cmd_desc(struct cam_icp_hw_mgr *hw_mgr,
 				return -EINVAL;
 			}
 			cpu_addr = cpu_addr + cmd_desc[i].offset;
+
 			cam_mem_put_cpu_buf(cmd_desc[i].mem_handle);
 		}
 	}
@@ -5256,6 +5274,7 @@ hw_dump:
 		req_ts.tv_nsec/NSEC_PER_USEC,
 		cur_ts.tv_sec,
 		cur_ts.tv_nsec/NSEC_PER_USEC);
+
 	rc  = cam_mem_get_cpu_buf(dump_args->buf_handle,
 		&icp_dump_args.cpu_addr, &icp_dump_args.buf_len);
 	if (rc) {
@@ -5304,6 +5323,7 @@ hw_dump:
 	CAM_DBG(CAM_ICP, "Offset before %zu after %zu",
 		dump_args->offset, icp_dump_args.offset);
 	dump_args->offset = icp_dump_args.offset;
+
 	cam_mem_put_cpu_buf(dump_args->buf_handle);
 	return rc;
 }
@@ -5993,28 +6013,45 @@ compat_hw_name_failed:
 	return rc;
 }
 
+static void cam_req_mgr_process_workq_icp_command_queue(struct work_struct *w)
+{
+	cam_req_mgr_process_workq(w);
+}
+
+static void cam_req_mgr_process_workq_icp_message_queue(struct work_struct *w)
+{
+	cam_req_mgr_process_workq(w);
+}
+
+static void cam_req_mgr_process_workq_icp_timer_queue(struct work_struct *w)
+{
+	cam_req_mgr_process_workq(w);
+}
+
 static int cam_icp_mgr_create_wq(void)
 {
 	int rc;
 	int i;
 
 	rc = cam_req_mgr_workq_create("icp_command_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.cmd_work, CRM_WORKQ_USAGE_NON_IRQ,
-		0);
+		&icp_hw_mgr.cmd_work, CRM_WORKQ_USAGE_NON_IRQ, 0, false,
+		cam_req_mgr_process_workq_icp_command_queue);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a command worker");
 		goto cmd_work_failed;
 	}
 
 	rc = cam_req_mgr_workq_create("icp_message_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.msg_work, CRM_WORKQ_USAGE_IRQ, 0);
+		&icp_hw_mgr.msg_work, CRM_WORKQ_USAGE_IRQ, 0, false,
+		cam_req_mgr_process_workq_icp_message_queue);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a message worker");
 		goto msg_work_failed;
 	}
 
 	rc = cam_req_mgr_workq_create("icp_timer_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.timer_work, CRM_WORKQ_USAGE_IRQ, 0);
+		&icp_hw_mgr.timer_work, CRM_WORKQ_USAGE_IRQ, 0, false,
+		cam_req_mgr_process_workq_icp_timer_queue);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a timer worker");
 		goto timer_work_failed;

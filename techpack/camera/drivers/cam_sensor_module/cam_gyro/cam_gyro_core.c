@@ -33,7 +33,7 @@ static int write_data_u8(uint32_t addr, uint32_t data)
 	};
 
 	rc = camera_io_dev_write(&(ctrl->io_master_info),
-		&i2c_reg_settings);
+		&i2c_reg_settings, false);
 	if (rc < 0)
 		CAM_ERR(CAM_SENSOR,
 			"%s: write 0x%x failed", __func__, addr);
