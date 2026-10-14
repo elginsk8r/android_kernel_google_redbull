@@ -107,6 +107,7 @@ void cam_req_mgr_rwsem_read_op(enum cam_subdev_rwsem lock)
 	else if (lock == CAM_SUBDEV_UNLOCK)
 		up_read(&rwsem_lock);
 }
+EXPORT_SYMBOL_GPL(cam_req_mgr_rwsem_read_op);
 
 static void cam_req_mgr_rwsem_write_op(enum cam_subdev_rwsem lock)
 {

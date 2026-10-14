@@ -1945,3 +1945,4 @@ int32_t cam_cci_client_ops(struct v4l2_subdev *sd, unsigned int cmd,
 
 	return rc;
 }
+EXPORT_SYMBOL_GPL(cam_cci_client_ops);

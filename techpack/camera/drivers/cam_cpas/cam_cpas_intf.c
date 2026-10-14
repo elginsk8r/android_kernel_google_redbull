@@ -177,6 +177,7 @@ int cam_cpas_get_camnoc_fifo_fill_level_info(
 
 	return rc;
 }
+EXPORT_SYMBOL_GPL(cam_cpas_get_camnoc_fifo_fill_level_info);
 
 int cam_cpas_get_hw_info(uint32_t *camera_family,
 	struct cam_hw_version *camera_version,

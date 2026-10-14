@@ -120,6 +120,7 @@ void cam_req_mgr_process_workq(struct work_struct *w)
 		i++;
 	}
 }
+EXPORT_SYMBOL_GPL(cam_req_mgr_process_workq);
 
 int cam_req_mgr_workq_enqueue_task(struct crm_workq_task *task,
 	void *priv, int32_t prio)
