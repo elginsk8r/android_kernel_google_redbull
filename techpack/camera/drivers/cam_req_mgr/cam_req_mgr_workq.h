@@ -11,8 +11,6 @@
 #include<linux/init.h>
 #include<linux/sched.h>
 #include <linux/workqueue.h>
-#include <linux/kthread.h>
-#include <uapi/linux/sched/types.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
 
@@ -67,9 +65,8 @@ struct crm_workq_task {
 };
 
 /** struct cam_req_mgr_core_workq
- * @work       : work token used by kthread
- * @job_worker : kthread internal struct
- * @job_worker_thread : kthread task_struct
+ * @work       : work token used by workqueue
+ * @job        : workqueue internal job struct
  * task -
  * @lock_bh    : lock for task structs
  * @in_irq     : set true if workque can be used in irq context
@@ -81,9 +78,8 @@ struct crm_workq_task {
  * -
  */
 struct cam_req_mgr_core_workq {
-	struct kthread_work        work;
-	struct kthread_worker      job_worker;
-	struct task_struct        *job_worker_thread;
+	struct work_struct         work;
+	struct workqueue_struct   *job;
 	spinlock_t                 lock_bh;
 	uint32_t                   in_irq;
 
